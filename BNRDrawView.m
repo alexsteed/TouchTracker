@@ -11,7 +11,9 @@
 
 @interface BNRDrawView ()
 
-@property (nonatomic, strong) NSMutableDictionary *linesInProgess;
+@property (nonatomic, strong) NSValue *beginKey;
+@property (nonatomic, strong) NSValue *endKey;
+@property (nonatomic, strong) BNRLine *lineInProgess;
 @property (nonatomic, strong) NSMutableArray *finishedLines;
 
 @end
@@ -26,7 +28,9 @@
     
     if (self)
     {
-        self.linesInProgess = [[NSMutableDictionary alloc] init];
+        self.beginKey = nil;
+        self.endKey = nil;
+        self.lineInProgess = nil;
         self.finishedLines = [[NSMutableArray alloc] init];
         self.backgroundColor = [UIColor grayColor];
         self.multipleTouchEnabled = YES;
@@ -36,29 +40,41 @@
 
 #pragma mark - drawing management
 
-- (void)strokeLine:(BNRLine *)line
+- (CGFloat)distanceBetween:(CGPoint)firstPoint and:(CGPoint)secondPoint
 {
-    UIBezierPath *bp = [UIBezierPath bezierPath];
-    bp.lineWidth = 10;
-    bp.lineCapStyle = kCGLineCapRound;
-    [bp moveToPoint:line.begin];
-    [bp addLineToPoint:line.end];
-    [bp stroke];
+    CGFloat distance = sqrtf(powf((secondPoint.x - firstPoint.x), 2) + powf((secondPoint.y - firstPoint.y), 2));
+    return distance;
+}
+
+- (void)strokeCircle:(BNRLine *)line
+{
+    CGPoint center;
+    float radius;
+    UIBezierPath *path = [UIBezierPath bezierPath];
+
+    path.lineWidth = 10;
+    path.lineCapStyle = kCGLineCapRound;
+    center.x = (line.end.x + line.begin.x) / 2.0;
+    center.y = (line.end.y + line.begin.y) / 2.0;
+    radius = [self distanceBetween:line.begin and:line.end] / 2.0;
+    [path moveToPoint:CGPointMake(center.x + radius, center.y)];
+    [path addArcWithCenter:center radius:radius startAngle:0 endAngle:M_PI * 2.0 clockwise:YES];
+    [path stroke];
 }
 
 - (void)drawRect:(CGRect)rect
 {
-    // Draw finished lines in black
-    [[UIColor blackColor] set];
     for (BNRLine *line in self.finishedLines)
     {
-        [self strokeLine:line];
+        [line.color set];
+        [self strokeCircle:line];
     }
-    [[UIColor redColor] set];
-    for (NSValue *key in self.linesInProgess)
+    if (self.endKey != nil && self.beginKey != nil)
     {
-     // If there is a line currently being drawn, draw it in red
-        [self strokeLine:self.linesInProgess[key]];
+        BNRLine *line = self.lineInProgess;
+        [line setLineColor];
+        [line.color set];
+        [self strokeCircle:line];
     }
 }
 
@@ -68,19 +84,24 @@
 {
     // Let's put in a log statement to see the order of events
     NSLog(@"%@", NSStringFromSelector(_cmd));
-    
     for (UITouch *t in touches)
     {
         CGPoint location = [t locationInView:self];
-        
-        BNRLine *line = [[BNRLine alloc] init];
-        line.begin = location;
-        line.end = location;
-        
         NSValue *key = [NSValue valueWithNonretainedObject:t];
-        self.linesInProgess[key] = line;
+        if (self.beginKey == nil)
+        {
+            self.beginKey = key;
+            self.lineInProgess = [[BNRLine alloc] init];
+            self.lineInProgess.begin = location;
+        }
+        else if (self.beginKey != nil && self.endKey == nil)
+        {
+            self.endKey = key;
+            self.lineInProgess.end = location;
+        }
     }
-    [self setNeedsDisplay];
+    if ([[touches allObjects] count] > 1)
+        [self setNeedsDisplay];
 }
 
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event
@@ -91,10 +112,14 @@
     for (UITouch *t in touches)
     {
         NSValue *key = [NSValue valueWithNonretainedObject:t];
-        BNRLine *line = self.linesInProgess[key];
-        line.end = [t locationInView:self];
+        BNRLine *line = self.lineInProgess;
+        if ([key isEqual:self.beginKey])
+            line.begin = [t locationInView:self];
+        else if ([key isEqual:self.endKey])
+            line.end = [t locationInView:self];
     }
-    [self setNeedsDisplay];
+    if ([[touches allObjects] count] > 1)
+        [self setNeedsDisplay];
 }
 
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
@@ -104,10 +129,22 @@
     for (UITouch *t in touches)
     {
         NSValue *key = [NSValue valueWithNonretainedObject:t];
-        BNRLine *line = self.linesInProgess[key];
-        [self.finishedLines addObject:line];
-    
-        [self.linesInProgess removeObjectForKey:key];
+        BNRLine *line = self.lineInProgess;
+        if ([key isEqual:self.beginKey])
+        {
+            if (self.endKey != nil)
+                [self.finishedLines addObject:line];
+            self.beginKey = nil;
+            self.endKey = nil;
+            self.lineInProgess = nil;
+        }
+        else if ([key isEqual:self.endKey])
+        {
+            [self.finishedLines addObject:line];
+            self.beginKey = nil;
+            self.endKey = nil;
+            self.lineInProgess = nil;
+        }
     }
     [self setNeedsDisplay];
 }
@@ -116,11 +153,9 @@
 {
     // Let's put in a log statement to see the order of events
     NSLog(@"%@",NSStringFromSelector(_cmd));
-    for (UITouch *t in touches)
-    {
-        NSValue *key = [NSValue valueWithNonretainedObject:t];
-        [self.linesInProgess removeObjectForKey:key];
-    }
+    self.lineInProgess = nil;
+    self.beginKey = nil;
+    self.endKey = nil;
     [self setNeedsDisplay];
 }
 
