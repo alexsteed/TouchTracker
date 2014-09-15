@@ -16,6 +16,7 @@
 @property (nonatomic, strong) NSMutableArray *finishedLines;
 
 @property (nonatomic, weak) BNRLine *selectedLine;
+@property (nonatomic, weak) BNRLine *lineToMove;
 
 @end
 
@@ -91,6 +92,11 @@
         [[UIColor greenColor] set];
         [self strokeLine:self.selectedLine];
     }
+    if (self.lineToMove)
+    {
+        [[UIColor blueColor] set];
+        [self strokeLine:self.lineToMove];
+    }
 }
 
 - (BNRLine *)lineAtPoint:(CGPoint)p
@@ -118,23 +124,27 @@
 
 - (void)moveLine:(UIPanGestureRecognizer *)gr
 {
-    if (!self.selectedLine)
+    NSLog(@"Recognized move line");
+
+    if (!self.lineToMove)
     {
         return;
     }
     
     if (gr.state == UIGestureRecognizerStateChanged)
     {
+        [[UIMenuController sharedMenuController] setMenuVisible:NO animated:YES];
+        
         CGPoint translation = [gr translationInView:self];
-        CGPoint begin = self.selectedLine.begin;
-        CGPoint end = self.selectedLine.end;
+        CGPoint begin = self.lineToMove.begin;
+        CGPoint end = self.lineToMove.end;
         begin.x += translation.x;
         begin.y += translation.y;
         end.x += translation.x;
         end.y += translation.y;
         
-        self.selectedLine.begin = begin;
-        self.selectedLine.end = end;
+        self.lineToMove.begin = begin;
+        self.lineToMove.end = end;
         
         [self setNeedsDisplay];
         [gr setTranslation:CGPointZero inView:self];
@@ -154,20 +164,20 @@
 
 - (void)longPress:(UIGestureRecognizer *)gr
 {
-    NSLog(@"Recognized tap");
+    NSLog(@"Recognized long press");
 
     if (gr.state == UIGestureRecognizerStateBegan)
     {
         CGPoint point = [gr locationInView:self];
-        self.selectedLine = [self lineAtPoint:point];
-        if (self.selectedLine)
+        self.lineToMove = [self lineAtPoint:point];
+        if (self.lineToMove)
         {
             [self.linesInProgess removeAllObjects];
         }
     }
     else if (gr.state == UIGestureRecognizerStateEnded)
     {
-        self.selectedLine = nil;
+        self.lineToMove = nil;
     }
     [self setNeedsDisplay];
 }
@@ -214,6 +224,8 @@
 {
     // Let's put in a log statement to see the order of events
     NSLog(@"%@", NSStringFromSelector(_cmd));
+    self.selectedLine = nil;
+    [[UIMenuController sharedMenuController] setMenuVisible:NO animated:YES];
     
     for (UITouch *t in touches)
     {
